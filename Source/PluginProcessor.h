@@ -10,34 +10,8 @@
 
 #include <JuceHeader.h>
 
-struct Compressor
-{
-public:
-    juce::AudioParameterFloat* attack{ nullptr };
-    juce::AudioParameterFloat* release{ nullptr };
-    juce::AudioParameterFloat* threeshold{ nullptr };
-    juce::AudioParameterChoice* ratio{ nullptr };
-
-    void prepare(const juce::dsp::ProcessSpec& spec) {
-        compressor.prepare(spec);
-    }
-
-    void updateCompressorSettings() {
-        compressor.setAttack(attack->get());
-        compressor.setRelease(release->get());
-        compressor.setRatio(ratio->getCurrentChoiceName().getFloatValue());
-        compressor.setThreshold(threeshold->get());
-    }
-
-    void process(juce::AudioBuffer<float>& buffer, juce::AudioParameterBool* bypass) {
-        auto block = juce::dsp::AudioBlock<float>(buffer);
-        auto context = juce::dsp::ProcessContextReplacing<float>(block);
-        context.isBypassed = bypass->get();
-        compressor.process(context);
-    }
-private:
-    juce::dsp::Compressor<float> compressor;
-};
+#include "Compressor.h"
+#include "LevelEnvelopeFollower.h"
 
 struct Filters
 {
@@ -77,7 +51,7 @@ public:
 //==============================================================================
 /**
 */
-class CompressorAudioProcessor  : public juce::AudioProcessor
+class CompressorAudioProcessor  : public juce::AudioProcessor, public juce::AudioProcessorValueTreeState::Listener
 {
 public:
     //==============================================================================
@@ -117,27 +91,23 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
-    using APVTS = juce::AudioProcessorValueTreeState;
-    static APVTS::ParameterLayout createParameterLayout();
+    void parameterChanged(const juce::String& parameterID, float newValue) override;
+    juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
-    APVTS apvts{ *this, nullptr, "Parameters", createParameterLayout() };
+    //==============================================================================
+    juce::Atomic<float> gainReduction;
+    juce::Atomic<float> currentInput;
+    juce::Atomic<float> currentOutput;
+
 private:
-    // juce::dsp::Limiter<float> limiter; TODO: implement latter
-
+    //==============================================================================
+    juce::AudioProcessorValueTreeState parameters;
     Compressor compressor;
-    Filters filters;
+    LevelEnvelopeFollower inLevelFollower;
+    LevelEnvelopeFollower outLevelFollower;
 
-    juce::dsp::Gain<float> makeUpGain;
-    juce::AudioParameterFloat* makeUpGainParam { nullptr };
+    // Filters filters;
 
-    template<typename T, typename U>
-    void applyGain(T& buffer, U& gain) {
-        auto block = juce::dsp::AudioBlock<float>(buffer);
-        auto ctx = juce::dsp::ProcessContextReplacing<float>(block);
-        gain.process(ctx);
-    }
-
-    juce::AudioParameterBool* bypass { nullptr };  
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CompressorAudioProcessor)
 };
