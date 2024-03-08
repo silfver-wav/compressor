@@ -8,59 +8,35 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "Constants.h"
+#include <cstdint>
 
 //==============================================================================
 CompressorAudioProcessor::CompressorAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
-     : AudioProcessor (BusesProperties()
-                     #if ! JucePlugin_IsMidiEffect
-                      #if ! JucePlugin_IsSynth
-                       .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                      #endif
-                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
-                     #endif
-                       )
-#endif
+                        : AudioProcessor(BusesProperties()
+                    #if ! JucePlugin_IsMidiEffect
+                    #if ! JucePlugin_IsSynth
+                            .withInput("Input", juce::AudioChannelSet::stereo(), true)
+                    #endif
+                            .withOutput("Output", juce::AudioChannelSet::stereo(), true)
+                    #endif
+                        ), parameters(*this, nullptr, "PARAMETERS", createParameterLayout())
+                    #endif
 {
-    // Compressor
-    //==============================================================================
-    compressor.attack = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("Attack"));
-    jassert(compressor.attack != nullptr);
+    //Add parameter listener
+    parameters.addParameterListener("inputgain", this);
+    parameters.addParameterListener("makeup", this);
+    parameters.addParameterListener("threshold", this);
+    parameters.addParameterListener("ratio", this);
+    parameters.addParameterListener("knee", this);
+    parameters.addParameterListener("attack", this);
+    parameters.addParameterListener("release", this);
+    parameters.addParameterListener("mix", this);
 
-    compressor.release = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("Release"));
-    jassert(compressor.release != nullptr);
-
-    compressor.threeshold = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("Threeshold"));
-    jassert(compressor.threeshold != nullptr);
-
-    compressor.ratio = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter("Ratio"));
-    jassert(compressor.ratio != nullptr);
-    //==============================================================================
-    
-    // LP & HP Filter
-    //==============================================================================
-    filters.lowCrossover = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("LowPass"));
-    jassert(filters.lowCrossover != nullptr);
-    filters.highCrossover = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("HighPass"));
-    jassert(filters.highCrossover != nullptr);
-
-    // Compressor Pass
-    filters.AP.setType(juce::dsp::LinkwitzRileyFilterType::allpass);
-    // HP
-    filters.LP1.setType(juce::dsp::LinkwitzRileyFilterType::lowpass);
-    filters.HP1.setType(juce::dsp::LinkwitzRileyFilterType::highpass);
-    // LP
-    filters.LP2.setType(juce::dsp::LinkwitzRileyFilterType::lowpass);
-    filters.HP2.setType(juce::dsp::LinkwitzRileyFilterType::highpass);
-
-    filters.solo = dynamic_cast<juce::AudioParameterBool*>(apvts.getParameter("Solo"));
-    jassert(filters.solo != nullptr);
-    //==============================================================================
-
-    makeUpGainParam = dynamic_cast<juce::AudioParameterFloat*>(apvts.getParameter("MakeUpGain"));
-    jassert(makeUpGainParam != nullptr);
-    bypass = dynamic_cast<juce::AudioParameterBool*>(apvts.getParameter("Bypass"));
-    jassert(bypass != nullptr);
+    gainReduction.set(0.0f);
+    currentInput.set(-std::numeric_limits<float>::infinity());
+    currentOutput.set(-std::numeric_limits<float>::infinity());
 }
 
 CompressorAudioProcessor::~CompressorAudioProcessor()
@@ -132,23 +108,18 @@ void CompressorAudioProcessor::changeProgramName (int index, const juce::String&
 //==============================================================================
 void CompressorAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    // Use this method as the place to do any pre-playback
-    // initialisation that you need..
-
     juce::dsp::ProcessSpec spec;
     spec.maximumBlockSize = samplesPerBlock;
     spec.numChannels = getTotalNumOutputChannels();
     spec.sampleRate = sampleRate;
-
+    // Prepare dsp classes
     compressor.prepare(spec);
-    filters.prepare(spec);
+    inLevelFollower.prepare(sampleRate);
+    outLevelFollower.prepare(sampleRate);
 
-    makeUpGain.prepare(spec);
-    makeUpGain.setRampDurationSeconds(0.05); // 50 ms
-
-    for (auto& buffer : filters.filtersBuffers) {
-        buffer.setSize(spec.numChannels, samplesPerBlock);
-    }
+    // Set envelope follower for level meter to measure over 300ms time frame
+    inLevelFollower.setPeakDecay(0.3f);
+    outLevelFollower.setPeakDecay(0.3f);
 }
 
 void CompressorAudioProcessor::releaseResources()
@@ -186,67 +157,26 @@ bool CompressorAudioProcessor::isBusesLayoutSupported (const BusesLayout& layout
 void CompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
-    auto totalNumInputChannels  = getTotalNumInputChannels();
+    auto totalNumInputChannels = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
+    const auto numSamples = buffer.getNumSamples();
 
-    // In case we have more outputs than inputs, this code clears any output
-    // channels that didn't contain input data, (because these aren't
-    // guaranteed to be empty - they may contain garbage).
-    // This is here to avoid people getting screaming feedback
-    // when they first compile a plugin, but obviously you don't need to keep
-    // this code if your algorithm always overwrites all the output channels.
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    compressor.updateCompressorSettings();
-    makeUpGain.setGainDecibels(makeUpGainParam->get());
+    //Update input peak metering
+    inLevelFollower.updatePeak(buffer.getArrayOfReadPointers(), totalNumInputChannels, numSamples);
+    currentInput.set(juce::Decibels::gainToDecibels(inLevelFollower.getPeak()));
 
-    for (auto& fb : filters.filtersBuffers) {
-        fb = buffer;
-    }
+    // Do compressor processing
+    compressor.process(buffer);
 
-    auto hpCutoff = filters.lowCrossover->get();
-    filters.LP1.setCutoffFrequency(hpCutoff);
-    filters.HP1.setCutoffFrequency(hpCutoff);
+    // Update gain reduction metering
+    gainReduction.set(compressor.getMaxGainReduction());
 
-    auto lpCutoff = filters.highCrossover->get();
-    filters.AP.setCutoffFrequency(lpCutoff);
-    filters.LP2.setCutoffFrequency(lpCutoff);
-    filters.HP2.setCutoffFrequency(lpCutoff);
-
-    auto fb0Block = juce::dsp::AudioBlock<float>(filters.filtersBuffers[0]);
-    auto fb1Block = juce::dsp::AudioBlock<float>(filters.filtersBuffers[1]);
-    auto fb2Block = juce::dsp::AudioBlock<float>(filters.filtersBuffers[2]);
-
-    auto fb0Ctx = juce::dsp::ProcessContextReplacing<float>(fb0Block);
-    auto fb1Ctx = juce::dsp::ProcessContextReplacing<float>(fb1Block);
-    auto fb2Ctx = juce::dsp::ProcessContextReplacing<float>(fb2Block);
-
-    filters.process(fb0Ctx, fb1Ctx, fb2Ctx);
-    compressor.process(filters.filtersBuffers[1], bypass);
-
-    auto numSamples = buffer.getNumSamples();
-    auto numChannels = buffer.getNumChannels();
-
-    if (bypass->get()) {
-        return;
-    }
-
-    buffer.clear();
-
-    auto addFilterBand = [nc = numChannels, ns = numSamples](auto& inputBuffer, const auto& source) {
-        for (auto i = 0; i < nc; ++i) {
-            inputBuffer.addFrom(i, 0, source, i, 0, ns);
-        }
-    };
-
-    addFilterBand(buffer, filters.filtersBuffers[1]);
-    if (!filters.solo->get()) {
-        addFilterBand(buffer, filters.filtersBuffers[0]);
-        addFilterBand(buffer, filters.filtersBuffers[2]);
-    }
-
-    applyGain(buffer, makeUpGain);
+    // Update output peak metering
+    outLevelFollower.updatePeak(buffer.getArrayOfReadPointers(), totalNumInputChannels, numSamples);
+    currentOutput = juce::Decibels::gainToDecibels(outLevelFollower.getPeak());
 }
 
 //==============================================================================
@@ -267,83 +197,133 @@ void CompressorAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     // You should use this method to store your parameters in the memory block.
     // You could do that either as raw data, or use the XML or ValueTree classes
     // as intermediaries to make it easy to save and load complex data.
-
-    juce::MemoryOutputStream mos(destData, true);
-    apvts.state.writeToStream(mos);
 }
 
 void CompressorAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
+}
 
-    auto tree = juce::ValueTree::readFromData(data, sizeInBytes);
-    
-    // Check tree is valid
-    if (tree.isValid()) {
-        apvts.replaceState(tree);
-    }
+void CompressorAudioProcessor::parameterChanged(const juce::String& parameterID, float newValue)
+{
+    if (parameterID == "inputgain") compressor.setInput(newValue);
+    else if (parameterID == "threshold") compressor.setThreshold(newValue);
+    else if (parameterID == "ratio") compressor.setRatio(newValue);
+    else if (parameterID == "knee") compressor.setKnee(newValue);
+    else if (parameterID == "attack") compressor.setAttack(newValue);
+    else if (parameterID == "release") compressor.setRelease(newValue);
+    else if (parameterID == "makeup") compressor.setMakeup(newValue);
+    else if (parameterID == "mix") compressor.setMix(newValue);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::createParameterLayout() {
-    APVTS::ParameterLayout layout;
-
     using namespace juce;
-
-    auto threesholdRange = NormalisableRange<float>(-60, 12, 1, 1);
-    auto attackReleaseRange = NormalisableRange<float>(5, 500, 1, 1);
-    std::vector<double> ratioRange = { 1, 1.5, 2, 3, 4 , 5, 6, 7, 8, 9, 10, 15, 20, 50, 100 };
-
-    juce::StringArray ratioStrings;
-    for (auto ratio : ratioRange) {
-        ratioStrings.add( juce::String(ratio, 1) );
-    }
-
-    auto gainRange = juce::NormalisableRange<float>(-24.f, 24.f, 0.5f, 1.f);
-
-    layout.add(std::make_unique<AudioParameterFloat>("MakeUpGain",
-                                                    "MakeUpGain",
-                                                    gainRange,
-                                                    0));
-
-    layout.add(std::make_unique<AudioParameterFloat>("Threeshold", 
-                                                    "Threeshold", 
-                                                    threesholdRange,
-                                                    0));
-
-    layout.add(std::make_unique<AudioParameterFloat>("Attack",
-                                                    "Attack",
-                                                    attackReleaseRange,
-                                                    50));
-
-    layout.add(std::make_unique<AudioParameterFloat>("Release",
-                                                    "Release",
-                                                    attackReleaseRange,
-                                                    250));
-
-    layout.add(std::make_unique<AudioParameterChoice>("Ratio",
-                                                    "Ratio",
-                                                    ratioStrings,
-                                                    3));
-
-    layout.add(std::make_unique<AudioParameterBool>("Bypass", "Bypass", true));
-
-
-    layout.add(std::make_unique<AudioParameterFloat>("HighPass",
-                                                    "HighPass",
-                                                    NormalisableRange<float>(1000, 20000, 1, 1),
-                                                    20000));
     
-    layout.add(std::make_unique<AudioParameterFloat>("LowPass",
-                                                    "LowPass",
-                                                    NormalisableRange<float>(20, 999, 1, 1),
-                                                    20));
+    std::vector<std::unique_ptr<RangedAudioParameter>> params;
 
-    layout.add(std::make_unique<AudioParameterBool>("Solo",
-                                                    "Solo",
-                                                    false));
+    params.push_back(std::make_unique<AudioParameterBool>("power", "Power", true));
 
-    return layout;
+    params.push_back(std::make_unique<AudioParameterFloat>("inputgain", "Input",
+                                                        NormalisableRange<float>(
+                                                            Constants::Parameter::inputStart,
+                                                            Constants::Parameter::inputEnd,
+                                                            Constants::Parameter::inputInterval), 0.0f,
+                                                        String(),
+                                                        AudioProcessorParameter::genericParameter,
+                                                        [](float value, float)
+                                                        {
+                                                            return String(value, 1) + " dB";
+                                                        }));
+
+
+    params.push_back(std::make_unique<AudioParameterFloat>("threshold", "Tresh",
+                                                        NormalisableRange<float>(
+                                                            Constants::Parameter::thresholdStart,
+                                                            Constants::Parameter::thresholdEnd,
+                                                            Constants::Parameter::thresholdInterval), -10.0f,
+                                                        String(), AudioProcessorParameter::genericParameter,
+                                                        [](float value, float maxStrLen)
+                                                        {
+                                                            return String(value, 1) + " dB";
+                                                        }));
+
+    params.push_back(std::make_unique<AudioParameterFloat>("ratio", "Ratio",
+                                                        NormalisableRange<float>(
+                                                            Constants::Parameter::ratioStart,
+                                                            Constants::Parameter::ratioEnd,
+                                                            Constants::Parameter::ratioInterval, 0.5f), 2.0f,
+                                                        String(), AudioProcessorParameter::genericParameter,
+                                                        [](float value, float)
+                                                        {
+                                                            if (value > 23.9f) return String("Infinity") + ":1";
+                                                            return String(value, 1) + ":1";
+                                                        }));
+
+    params.push_back(std::make_unique<AudioParameterFloat>("knee", "Knee",
+                                                           NormalisableRange<float>(
+                                                                   Constants::Parameter::kneeStart,
+                                                                   Constants::Parameter::kneeEnd,
+                                                                   Constants::Parameter::kneeInterval),
+                                                           6.0f, String(), AudioProcessorParameter::genericParameter,
+                                                           [](float value, float)
+                                                           {
+                                                               return String(value, 1) + " dB";
+                                                           }));
+
+    params.push_back(std::make_unique<AudioParameterFloat>("attack", "Attack",
+                                                        NormalisableRange<float>(
+                                                            Constants::Parameter::attackStart,
+                                                            Constants::Parameter::attackEnd,
+                                                            Constants::Parameter::attackInterval, 0.5f), 2.0f,
+                                                        "ms",
+                                                        AudioProcessorParameter::genericParameter,
+                                                        [](float value, float)
+                                                        {
+                                                            if (value == 100.0f) return String(value, 0) + " ms";
+                                                            return String(value, 2) + " ms";
+                                                        }));
+
+    params.push_back(std::make_unique<AudioParameterFloat>("release", "Release",
+                                                        NormalisableRange<float>(
+                                                            Constants::Parameter::releaseStart,
+                                                            Constants::Parameter::releaseEnd,
+                                                            Constants::Parameter::releaseInterval, 0.35f),
+                                                        140.0f,
+                                                        String(),
+                                                        AudioProcessorParameter::genericParameter,
+                                                        [](float value, float)
+                                                        {
+                                                            if (value <= 100) return String(value, 2) + " ms";
+                                                            if (value >= 1000)
+                                                                return String(value * 0.001f, 2) + " s";
+                                                            return String(value, 1) + " ms";
+                                                        }));
+
+    params.push_back(std::make_unique<AudioParameterFloat>("makeup", "Makeup",
+                                                           NormalisableRange<float>(
+                                                                   Constants::Parameter::makeupStart,
+                                                                   Constants::Parameter::makeupEnd,
+                                                                   Constants::Parameter::makeupInterval), 0.0f,
+                                                           String(),
+                                                           AudioProcessorParameter::genericParameter,
+                                                           [](float value, float)
+                                                           {
+                                                               return String(value, 1) + " dB ";
+                                                           }));
+
+    params.push_back(std::make_unique<AudioParameterFloat>("mix", "Mix",
+                                                        NormalisableRange<float>(
+                                                            Constants::Parameter::mixStart,
+                                                            Constants::Parameter::mixEnd,
+                                                            Constants::Parameter::mixInterval),
+                                                        1.0f, "%", AudioProcessorParameter::genericParameter,
+                                                        [](float value, float)
+                                                        {
+                                                            return String(value * 100.0f, 1) + " %";
+                                                        }));
+
+    return {params.begin(), params.end()};
 }
 
 //==============================================================================
