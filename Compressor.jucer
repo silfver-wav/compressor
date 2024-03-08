@@ -7,37 +7,22 @@
     <GROUP id="{D56B943B-8738-C50C-0A5D-E471D39775CF}" name="Source">
       <GROUP id="{CC2F0165-84A2-5DB0-6AD4-0812469EC9FB}" name="util/include">
         <FILE id="JH6dqX" name="Constants.h" compile="0" resource="0" file="Source/Constants.h"/>
-        <FILE id="BxbVDt" name="SIMDMath.h" compile="0" resource="0" file="Source/SIMDMath.h"/>
       </GROUP>
       <GROUP id="{0CF9D987-2BB5-AFA4-28FB-7DC547F3BF9A}" name="dsp">
         <GROUP id="{00EB9E38-3301-7CE4-6AA0-5D766A72BB0E}" name="include">
           <FILE id="AMtOTp" name="Compressor.h" compile="0" resource="0" file="Source/Compressor.h"/>
-          <FILE id="X3WC6o" name="CrestFactor.h" compile="0" resource="0" file="Source/CrestFactor.h"/>
-          <FILE id="lYytNm" name="DelayLine.h" compile="0" resource="0" file="Source/DelayLine.h"/>
-          <FILE id="kDdv5H" name="EnvelopeFollower.h" compile="0" resource="0"
-                file="Source/EnvelopeFollower.h"/>
           <FILE id="tTug0u" name="GainComputer.h" compile="0" resource="0" file="Source/GainComputer.h"/>
           <FILE id="X66M4U" name="LevelDetector.h" compile="0" resource="0" file="Source/LevelDetector.h"/>
           <FILE id="TRde4k" name="LevelEnvelopeFollower.h" compile="0" resource="0"
                 file="Source/LevelEnvelopeFollower.h"/>
-          <FILE id="qAgfnN" name="LookAhed.h" compile="0" resource="0" file="Source/LookAhed.h"/>
-          <FILE id="L4uBn7" name="SmoothingFilter.h" compile="0" resource="0"
-                file="Source/SmoothingFilter.h"/>
         </GROUP>
         <FILE id="VWUqc3" name="Compressor.cpp" compile="1" resource="0" file="Source/Compressor.cpp"/>
-        <FILE id="MukK8g" name="CrestFactor.cpp" compile="1" resource="0" file="Source/CrestFactor.cpp"/>
-        <FILE id="DZysSW" name="DelayLine.cpp" compile="1" resource="0" file="Source/DelayLine.cpp"/>
-        <FILE id="IJyr6m" name="EnvelopeFollower.cpp" compile="1" resource="0"
-              file="Source/EnvelopeFollower.cpp"/>
         <FILE id="SQFVua" name="GainComputer.cpp" compile="1" resource="0"
               file="Source/GainComputer.cpp"/>
         <FILE id="a8Wa8P" name="LevelDetector.cpp" compile="1" resource="0"
               file="Source/LevelDetector.cpp"/>
         <FILE id="Me6TtF" name="LevelEnvelopeFollower.cpp" compile="1" resource="0"
               file="Source/LevelEnvelopeFollower.cpp"/>
-        <FILE id="XpDug5" name="LookAhed.cpp" compile="1" resource="0" file="Source/LookAhed.cpp"/>
-        <FILE id="OleC4l" name="SmoothingFilter.cpp" compile="1" resource="0"
-              file="Source/SmoothingFilter.cpp"/>
       </GROUP>
       <FILE id="wIn1Yq" name="PluginProcessor.cpp" compile="1" resource="0"
             file="Source/PluginProcessor.cpp"/>

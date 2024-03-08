@@ -226,9 +226,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::cr
 
     params.push_back(std::make_unique<AudioParameterFloat>("inputgain", "Input",
                                                         NormalisableRange<float>(
-                                                            Constants::Parameter::inputStart,
-                                                            Constants::Parameter::inputEnd,
-                                                            Constants::Parameter::inputInterval), 0.0f,
+                                                            GlobalParameters::Parameter::inputStart,
+                                                            GlobalParameters::Parameter::inputEnd,
+                                                            GlobalParameters::Parameter::inputInterval), 0.0f,
                                                         String(),
                                                         AudioProcessorParameter::genericParameter,
                                                         [](float value, float)
@@ -239,9 +239,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::cr
 
     params.push_back(std::make_unique<AudioParameterFloat>("threshold", "Tresh",
                                                         NormalisableRange<float>(
-                                                            Constants::Parameter::thresholdStart,
-                                                            Constants::Parameter::thresholdEnd,
-                                                            Constants::Parameter::thresholdInterval), -10.0f,
+                                                            GlobalParameters::Parameter::thresholdStart,
+                                                            GlobalParameters::Parameter::thresholdEnd,
+                                                            GlobalParameters::Parameter::thresholdInterval), -10.0f,
                                                         String(), AudioProcessorParameter::genericParameter,
                                                         [](float value, float maxStrLen)
                                                         {
@@ -250,9 +250,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::cr
 
     params.push_back(std::make_unique<AudioParameterFloat>("ratio", "Ratio",
                                                         NormalisableRange<float>(
-                                                            Constants::Parameter::ratioStart,
-                                                            Constants::Parameter::ratioEnd,
-                                                            Constants::Parameter::ratioInterval, 0.5f), 2.0f,
+                                                            GlobalParameters::Parameter::ratioStart,
+                                                            GlobalParameters::Parameter::ratioEnd,
+                                                            GlobalParameters::Parameter::ratioInterval, 0.5f), 2.0f,
                                                         String(), AudioProcessorParameter::genericParameter,
                                                         [](float value, float)
                                                         {
@@ -262,9 +262,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::cr
 
     params.push_back(std::make_unique<AudioParameterFloat>("knee", "Knee",
                                                            NormalisableRange<float>(
-                                                                   Constants::Parameter::kneeStart,
-                                                                   Constants::Parameter::kneeEnd,
-                                                                   Constants::Parameter::kneeInterval),
+                                                                   GlobalParameters::Parameter::kneeStart,
+                                                                   GlobalParameters::Parameter::kneeEnd,
+                                                                   GlobalParameters::Parameter::kneeInterval),
                                                            6.0f, String(), AudioProcessorParameter::genericParameter,
                                                            [](float value, float)
                                                            {
@@ -273,9 +273,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::cr
 
     params.push_back(std::make_unique<AudioParameterFloat>("attack", "Attack",
                                                         NormalisableRange<float>(
-                                                            Constants::Parameter::attackStart,
-                                                            Constants::Parameter::attackEnd,
-                                                            Constants::Parameter::attackInterval, 0.5f), 2.0f,
+                                                            GlobalParameters::Parameter::attackStart,
+                                                            GlobalParameters::Parameter::attackEnd,
+                                                            GlobalParameters::Parameter::attackInterval, 0.5f), 2.0f,
                                                         "ms",
                                                         AudioProcessorParameter::genericParameter,
                                                         [](float value, float)
@@ -286,9 +286,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::cr
 
     params.push_back(std::make_unique<AudioParameterFloat>("release", "Release",
                                                         NormalisableRange<float>(
-                                                            Constants::Parameter::releaseStart,
-                                                            Constants::Parameter::releaseEnd,
-                                                            Constants::Parameter::releaseInterval, 0.35f),
+                                                            GlobalParameters::Parameter::releaseStart,
+                                                            GlobalParameters::Parameter::releaseEnd,
+                                                            GlobalParameters::Parameter::releaseInterval, 0.35f),
                                                         140.0f,
                                                         String(),
                                                         AudioProcessorParameter::genericParameter,
@@ -302,9 +302,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::cr
 
     params.push_back(std::make_unique<AudioParameterFloat>("makeup", "Makeup",
                                                            NormalisableRange<float>(
-                                                                   Constants::Parameter::makeupStart,
-                                                                   Constants::Parameter::makeupEnd,
-                                                                   Constants::Parameter::makeupInterval), 0.0f,
+                                                                   GlobalParameters::Parameter::makeupStart,
+                                                                   GlobalParameters::Parameter::makeupEnd,
+                                                                   GlobalParameters::Parameter::makeupInterval), 0.0f,
                                                            String(),
                                                            AudioProcessorParameter::genericParameter,
                                                            [](float value, float)
@@ -314,9 +314,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::cr
 
     params.push_back(std::make_unique<AudioParameterFloat>("mix", "Mix",
                                                         NormalisableRange<float>(
-                                                            Constants::Parameter::mixStart,
-                                                            Constants::Parameter::mixEnd,
-                                                            Constants::Parameter::mixInterval),
+                                                            GlobalParameters::Parameter::mixStart,
+                                                            GlobalParameters::Parameter::mixEnd,
+                                                            GlobalParameters::Parameter::mixInterval),
                                                         1.0f, "%", AudioProcessorParameter::genericParameter,
                                                         [](float value, float)
                                                         {
