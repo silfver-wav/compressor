@@ -62,5 +62,14 @@ namespace GlobalParameters
         constexpr float mixStart = 0.0f;
         constexpr float mixEnd = 1.0f;
         constexpr float mixInterval = 0.001f;
+
+        // Filter params
+        constexpr float lowPassStart = 20.0f;
+        constexpr float lowPassEnd = 999.0f;
+        constexpr float lowPassxInterval = 1.0f;
+
+        constexpr float highPassStart = 1000.0f;
+        constexpr float highPassEnd = 20000.0f;
+        constexpr float highPassxInterval = 1.0f;
     }
 }

@@ -8,7 +8,7 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
-#include "Constants.h"
+#include "GlobalParameters.h"
 #include <cstdint>
 
 //==============================================================================
@@ -24,7 +24,7 @@ CompressorAudioProcessor::CompressorAudioProcessor()
                         ), parameters(*this, nullptr, "PARAMETERS", createParameterLayout())
                     #endif
 {
-    //Add parameter listener
+    // Add Compressor parameter listener
     parameters.addParameterListener("inputgain", this);
     parameters.addParameterListener("makeup", this);
     parameters.addParameterListener("threshold", this);
@@ -33,6 +33,11 @@ CompressorAudioProcessor::CompressorAudioProcessor()
     parameters.addParameterListener("attack", this);
     parameters.addParameterListener("release", this);
     parameters.addParameterListener("mix", this);
+
+    // Add Filter parameter listener
+    parameters.addParameterListener("highPass", this);
+    parameters.addParameterListener("lowPass", this);
+    parameters.addParameterListener("solo", this);
 
     gainReduction.set(0.0f);
     currentInput.set(-std::numeric_limits<float>::infinity());
@@ -113,6 +118,7 @@ void CompressorAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     spec.numChannels = getTotalNumOutputChannels();
     spec.sampleRate = sampleRate;
     // Prepare dsp classes
+    filter.prepare(spec);
     compressor.prepare(spec);
     inLevelFollower.prepare(sampleRate);
     outLevelFollower.prepare(sampleRate);
@@ -168,8 +174,14 @@ void CompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     inLevelFollower.updatePeak(buffer.getArrayOfReadPointers(), totalNumInputChannels, numSamples);
     currentInput.set(juce::Decibels::gainToDecibels(inLevelFollower.getPeak()));
 
+    // get compressor allpass
+    juce::AudioBuffer<float>& allPassBuffer = filter.bufferSplit(buffer);
+
     // Do compressor processing
-    compressor.process(buffer);
+    compressor.process(allPassBuffer);
+
+    // Do filter processing
+    filter.process(buffer);
 
     // Update gain reduction metering
     gainReduction.set(compressor.getMaxGainReduction());
@@ -215,6 +227,9 @@ void CompressorAudioProcessor::parameterChanged(const juce::String& parameterID,
     else if (parameterID == "release") compressor.setRelease(newValue);
     else if (parameterID == "makeup") compressor.setMakeup(newValue);
     else if (parameterID == "mix") compressor.setMix(newValue);
+    else if (parameterID == "highPass") filter.setHighCrossover(newValue);
+    else if (parameterID == "lowPass") filter.setLowCrossover(newValue);
+    else if (parameterID == "solo") filter.setSolo();
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::createParameterLayout() {
@@ -235,7 +250,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::cr
                                                         {
                                                             return String(value, 1) + " dB";
                                                         }));
-
 
     params.push_back(std::make_unique<AudioParameterFloat>("threshold", "Tresh",
                                                         NormalisableRange<float>(
@@ -322,6 +336,30 @@ juce::AudioProcessorValueTreeState::ParameterLayout CompressorAudioProcessor::cr
                                                         {
                                                             return String(value * 100.0f, 1) + " %";
                                                         }));
+
+    params.push_back(std::make_unique<AudioParameterFloat>("highPass", "HighPass",
+                                                        NormalisableRange<float>(
+                                                            GlobalParameters::Parameter::highPassStart,
+                                                            GlobalParameters::Parameter::highPassEnd,
+                                                            GlobalParameters::Parameter::highPassxInterval),
+                                                        1.0f, "Hz", AudioProcessorParameter::genericParameter,
+                                                        [](float value, float)
+                                                        {
+                                                            return String(value, 1) + " Hz";
+                                                        }));
+
+    params.push_back(std::make_unique<AudioParameterFloat>("lowPass", "LowPass",
+                                                    NormalisableRange<float>(
+                                                        GlobalParameters::Parameter::lowPassStart,
+                                                        GlobalParameters::Parameter::lowPassEnd,
+                                                        GlobalParameters::Parameter::highPassxInterval),
+                                                    1.0f, "Hz", AudioProcessorParameter::genericParameter,
+                                                    [](float value, float)
+                                                    {
+                                                        return String(value, 1) + " Hz";
+                                                    }));
+
+    params.push_back(std::make_unique<AudioParameterBool>("solo", "Solo", false));
 
     return {params.begin(), params.end()};
 }
